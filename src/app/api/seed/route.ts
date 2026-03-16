@@ -4,6 +4,15 @@ import bcrypt from "bcryptjs"
 
 export async function GET() {
   try {
+    const isDevLikeEnvironment = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test"
+
+    if (!isDevLikeEnvironment) {
+      return NextResponse.json(
+        { error: "Seed endpoint is only available in development/test environments" },
+        { status: 403 }
+      )
+    }
+
     // Check if already seeded
     const existingUsers = await db.user.count()
     if (existingUsers > 0) {

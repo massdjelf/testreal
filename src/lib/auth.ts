@@ -30,6 +30,13 @@ declare module "next-auth/jwt" {
   }
 }
 
+const authSecret = process.env.NEXTAUTH_SECRET
+const isProduction = process.env.NODE_ENV === "production"
+
+if (isProduction && !authSecret) {
+  console.warn("NEXTAUTH_SECRET is not set. Authentication may fail in production.")
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -95,5 +102,5 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  secret: process.env.NEXTAUTH_SECRET || "land-map-secret-key-2024",
+  secret: authSecret || (!isProduction ? "land-map-dev-secret-key" : undefined),
 }
