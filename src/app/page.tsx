@@ -38,7 +38,8 @@ import { PropertyCard } from "@/components/property/PropertyCard"
 import { PropertyDetail } from "@/components/property/PropertyDetail"
 import { AdminPanel } from "@/components/admin/AdminPanel"
 import { VendorPanel } from "@/components/vendor/VendorPanel"
-import { Property } from "@/types"
+import { VendorApplicationDialog } from "@/components/vendor/VendorApplicationDialog"
+import { Property, User } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 
 // Dynamically import the map component with no SSR
@@ -84,6 +85,8 @@ export default function HomePage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [activeLayer, setActiveLayer] = useState<string | null>(null)
+  const [showVendorApplication, setShowVendorApplication] = useState(false)
+  const [viewerProfile, setViewerProfile] = useState<User | null>(null)
   const { toast } = useToast()
   
   // Use ref to prevent infinite loops
@@ -94,6 +97,14 @@ export default function HomePage() {
   const isPremium = session?.user?.role === "PREMIUM_USER" ||
                     session?.user?.role === "PREMIUM_VENDOR" ||
                     session?.user?.role === "ADMIN"
+  const viewerVendorStatus = viewerProfile?.vendorStatus || session?.user?.vendorStatus || "NONE"
+  const canAccessVendorPanel =
+    session?.user?.role === "VENDOR" ||
+    session?.user?.role === "PREMIUM_VENDOR"
+  const canApplyForVendorAccess =
+    !!session &&
+    session.user.role === "USER" &&
+    viewerVendorStatus !== "APPROVED"
 
   const requireAuthentication = useCallback((context: string) => {
     if (session) {
@@ -178,6 +189,36 @@ export default function HomePage() {
     }
   }, [currentView, session, status])
 
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setViewerProfile(null)
+      return
+    }
+
+    const controller = new AbortController()
+
+    const fetchViewerProfile = async () => {
+      try {
+        const response = await fetch(`/api/users?userId=${session.user.id}&includeCounts=false`, {
+          signal: controller.signal,
+        })
+
+        if (response.ok) {
+          const profile = await response.json()
+          setViewerProfile(profile)
+        }
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error("Failed to fetch viewer profile:", error)
+        }
+      }
+    }
+
+    void fetchViewerProfile()
+
+    return () => controller.abort()
+  }, [session?.user?.id])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -254,6 +295,8 @@ export default function HomePage() {
     await signOut({ redirect: false })
     setCurrentView("landing")
     setViewedCount(0)
+    setViewerProfile(null)
+    setShowVendorApplication(false)
   }
 
   const handleBackToMap = () => {
@@ -741,7 +784,7 @@ export default function HomePage() {
                         <Map className="w-4 h-4 mr-2" />
                         Map View
                       </Button>
-                      {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+                      {canAccessVendorPanel && (
                         <Button
                           variant="ghost"
                           className="w-full justify-start"
@@ -752,6 +795,19 @@ export default function HomePage() {
                         >
                           <Building2 className="w-4 h-4 mr-2" />
                           My Properties
+                        </Button>
+                      )}
+                      {canApplyForVendorAccess && (
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            setShowVendorApplication(true)
+                            setSidebarOpen(false)
+                          }}
+                        >
+                          <Building2 className="w-4 h-4 mr-2" />
+                          {viewerVendorStatus === "PENDING" ? "Vendor Review Pending" : "Sell Property"}
                         </Button>
                       )}
                       {session?.user?.role === "ADMIN" && (
@@ -851,7 +907,24 @@ export default function HomePage() {
                 </Badge>
               )}
 
-              {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+              {viewerVendorStatus === "PENDING" && (
+                <Badge variant="secondary" className="hidden sm:inline-flex">
+                  Restricted seller mode
+                </Badge>
+              )}
+
+              {canApplyForVendorAccess && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowVendorApplication(true)}
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  {viewerVendorStatus === "PENDING" ? "Pending Review" : "Sell Property"}
+                </Button>
+              )}
+
+              {canAccessVendorPanel && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1036,6 +1109,46 @@ export default function HomePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {session?.user?.id && (
+          <VendorApplicationDialog
+            open={showVendorApplication}
+            onOpenChange={setShowVendorApplication}
+            userId={session.user.id}
+            initialData={{
+              phone: viewerProfile?.phone,
+              vendorAddress: viewerProfile?.vendorAddress,
+              vendorIdNumber: viewerProfile?.vendorIdNumber,
+              vendorStatus: viewerVendorStatus as User["vendorStatus"],
+            }}
+            onSubmitted={(payload) => {
+              setViewerProfile((current) => {
+                const baseProfile = current ?? {
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.name || null,
+                  role: session.user.role as User["role"],
+                  vendorStatus: payload.vendorStatus,
+                  phone: payload.phone,
+                  avatar: null,
+                  subscriptionPlan: "FREE" as User["subscriptionPlan"],
+                  propertiesViewed: viewedCount,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                }
+
+                return {
+                  ...baseProfile,
+                  phone: payload.phone,
+                  vendorAddress: payload.vendorAddress,
+                  vendorIdNumber: payload.vendorIdNumber,
+                  vendorFeePaid: payload.vendorFeePaid,
+                  vendorStatus: payload.vendorStatus,
+                }
+              })
+            }}
+          />
+        )}
       </div>
     )
   }

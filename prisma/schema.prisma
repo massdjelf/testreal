@@ -18,11 +18,18 @@ enum UserRole {
   PREMIUM_VENDOR
 }
 
+enum VendorStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum PropertyStatus {
-  AVAILABLE    // Red - Not sold, available for purchase
-  SOLD         // Green - Already sold
-  BIDDING      // Grey - Currently in bidding process
-  PENDING      // Orange - Pending verification
+  AVAILABLE // Red - Not sold, available for purchase
+  SOLD // Green - Already sold
+  BIDDING // Grey - Currently in bidding process
+  PENDING // Orange - Pending verification
 }
 
 enum PropertyType {
@@ -40,23 +47,30 @@ enum SubscriptionPlan {
 }
 
 model User {
-  id               String           @id @default(cuid())
-  email            String           @unique
-  password         String
-  name             String?
-  role             UserRole         @default(USER)
-  phone            String?
-  avatar           String?
-  subscriptionPlan SubscriptionPlan @default(FREE)
-  premiumExpiry    DateTime?
-  propertiesViewed Int              @default(0)
-  dailyViewsReset  DateTime?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  properties       Property[]       @relation("OwnerProperties")
-  bids             Bid[]
-  documents        Document[]
-  propertyViews    PropertyView[]
+  id                String           @id @default(cuid())
+  email             String           @unique
+  password          String
+  name              String?
+  role              UserRole         @default(USER)
+  vendorStatus      VendorStatus     @default(NONE)
+  phone             String?
+  avatar            String?
+  vendorAddress     String?
+  vendorIdNumber    String?
+  vendorFeePaid     Boolean          @default(false)
+  vendorRequestedAt DateTime?
+  vendorReviewedAt  DateTime?
+  vendorReviewedBy  String?
+  subscriptionPlan  SubscriptionPlan @default(FREE)
+  premiumExpiry     DateTime?
+  propertiesViewed  Int              @default(0)
+  dailyViewsReset   DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  properties        Property[]       @relation("OwnerProperties")
+  bids              Bid[]
+  documents         Document[]
+  propertyViews     PropertyView[]
 }
 
 model Property {

@@ -10,6 +10,7 @@ declare module "next-auth" {
       email: string
       name?: string | null
       role: string
+      vendorStatus: string
       image?: string | null
     }
   }
@@ -18,6 +19,7 @@ declare module "next-auth" {
     email: string
     name?: string | null
     role: string
+    vendorStatus: string
   }
 }
 
@@ -27,6 +29,7 @@ declare module "next-auth/jwt" {
     email: string
     name?: string | null
     role: string
+    vendorStatus: string
   }
 }
 
@@ -72,6 +75,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role,
+          vendorStatus: user.vendorStatus,
         }
       },
     }),
@@ -83,6 +87,7 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email
         token.name = user.name
         token.role = user.role
+        token.vendorStatus = user.vendorStatus
       }
       return token
     },
@@ -92,6 +97,7 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email
         session.user.name = token.name
         session.user.role = token.role
+        session.user.vendorStatus = token.vendorStatus
       }
       return session
     },
