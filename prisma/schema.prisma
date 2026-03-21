@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -18,11 +18,18 @@ enum UserRole {
   PREMIUM_VENDOR
 }
 
+enum VendorStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum PropertyStatus {
-  AVAILABLE    // Red - Not sold, available for purchase
-  SOLD         // Green - Already sold
-  BIDDING      // Grey - Currently in bidding process
-  PENDING      // Orange - Pending verification
+  AVAILABLE // Red - Not sold, available for purchase
+  SOLD // Green - Already sold
+  BIDDING // Grey - Currently in bidding process
+  PENDING // Orange - Pending verification
 }
 
 enum PropertyType {
@@ -40,143 +47,119 @@ enum SubscriptionPlan {
 }
 
 model User {
-  id            String           @id @default(cuid())
-  email         String           @unique
-  password      String
-  name          String?
-  role          UserRole         @default(USER)
-  phone         String?
-  avatar        String?
-  
-  // Premium features
-  subscriptionPlan SubscriptionPlan @default(FREE)
-  premiumExpiry   DateTime?
-  propertiesViewed Int            @default(0)
-  dailyViewsReset DateTime?
-  
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  
-  // Relations
-  properties    Property[]       @relation("OwnerProperties")
-  bids          Bid[]
-  documents     Document[]
-  propertyViews PropertyView[]
+  id                String           @id @default(cuid())
+  email             String           @unique
+  password          String
+  name              String?
+  role              UserRole         @default(USER)
+  vendorStatus      VendorStatus     @default(NONE)
+  phone             String?
+  avatar            String?
+  vendorAddress     String?
+  vendorIdNumber    String?
+  vendorFeePaid     Boolean          @default(false)
+  vendorRequestedAt DateTime?
+  vendorReviewedAt  DateTime?
+  vendorReviewedBy  String?
+  subscriptionPlan  SubscriptionPlan @default(FREE)
+  premiumExpiry     DateTime?
+  propertiesViewed  Int              @default(0)
+  dailyViewsReset   DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  properties        Property[]       @relation("OwnerProperties")
+  bids              Bid[]
+  documents         Document[]
+  propertyViews     PropertyView[]
 }
 
 model Property {
-  id              String         @id @default(cuid())
-  title           String
-  description     String?
-  type            PropertyType   @default(LAND)
-  status          PropertyStatus @default(PENDING)
-  
-  // Location
-  address         String
-  city            String
-  state           String
-  country         String         @default("USA")
-  zipCode         String?
-  
-  // Coordinates (for map)
-  latitude        Float
-  longitude       Float
-  
-  // Area and Pricing
-  areaSqm         Float          // Area in square meters
-  areaSqf         Float          // Area in square feet
-  pricePerSqm     Float          // Price per square meter
-  pricePerSqf     Float          // Price per square foot
-  totalPrice      Float          // Total price
-  
-  // Partition support
-  isPartitionable Boolean        @default(false)
-  minPartitionSize Float?        // Minimum partition size in sqm
-  
-  // Property Details
-  bedrooms        Int?
-  bathrooms       Int?
-  yearBuilt       Int?
-  
-  // Polygon coordinates for property boundaries (JSON string of LatLng[])
-  boundaryCoords  String?
-  
-  // Partition polygons (JSON string of Partition[])
-  partitions      String?
-  
-  // Images (JSON array of URLs)
-  images          String?
-  
-  // Relations
-  ownerId         String
-  owner           User           @relation("OwnerProperties", fields: [ownerId], references: [id])
-  bids            Bid[]
-  documents       Document[]
-  propertyViews   PropertyView[]
-  
-  // Verification
-  isVerified      Boolean        @default(false)
-  verifiedBy      String?
-  verifiedAt      DateTime?
-  
-  // Soil and crime data (for premium layers)
-  soilQuality     String?        // JSON: { type, rating, suitability }
-  crimeRate       String?        // JSON: { rate, trend, safetyScore }
-  floodZone       String?
-  
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  title            String
+  description      String?
+  type             PropertyType   @default(LAND)
+  status           PropertyStatus @default(PENDING)
+  address          String
+  city             String
+  state            String
+  country          String         @default("USA")
+  zipCode          String?
+  latitude         Float
+  longitude        Float
+  areaSqm          Float
+  areaSqf          Float
+  pricePerSqm      Float
+  pricePerSqf      Float
+  totalPrice       Float
+  isPartitionable  Boolean        @default(false)
+  minPartitionSize Float?
+  bedrooms         Int?
+  bathrooms        Int?
+  yearBuilt        Int?
+  boundaryCoords   String?
+  partitions       String?
+  images           String?
+  ownerId          String
+  owner            User           @relation("OwnerProperties", fields: [ownerId], references: [id])
+  bids             Bid[]
+  documents        Document[]
+  propertyViews    PropertyView[]
+  isVerified       Boolean        @default(false)
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  soilQuality      String?
+  crimeRate        String?
+  floodZone        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model Bid {
-  id              String       @id @default(cuid())
-  propertyId      String
-  property        Property     @relation(fields: [propertyId], references: [id])
-  userId          String
-  user            User         @relation(fields: [userId], references: [id])
-  amount          Float
-  message         String?
-  
-  // For partition bids
-  partitionId     String?
-  partitionSize   Float?
-  
-  status          String       @default("PENDING") // PENDING, ACCEPTED, REJECTED
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  amount        Float
+  message       String?
+  partitionId   String?
+  partitionSize Float?
+  status        String   @default("PENDING")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Document {
-  id              String       @id @default(cuid())
-  propertyId      String
-  property        Property     @relation(fields: [propertyId], references: [id])
-  userId          String
-  user            User         @relation(fields: [userId], references: [id])
-  name            String
-  url             String       // File path or URL
-  type            String       // deed, survey, title, boundary_map, etc.
-  status          String       @default("PENDING") // PENDING, VERIFIED, REJECTED
-  uploadedAt      DateTime     @default(now())
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  name       String
+  url        String
+  type       String
+  status     String   @default("PENDING")
+  uploadedAt DateTime @default(now())
 }
 
 model PropertyView {
-  id              String       @id @default(cuid())
-  propertyId      String
-  property        Property     @relation(fields: [propertyId], references: [id])
-  userId          String
-  user            User         @relation(fields: [userId], references: [id])
-  viewedAt        DateTime     @default(now())
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  viewedAt   DateTime @default(now())
 }
 
 model Region {
-  id              String       @id @default(cuid())
-  name            String
-  type            String       // continent, country, state, city
-  parent_id       String?
-  latitude        Float
-  longitude       Float
-  zoomLevel       Int
-  propertyCount   Int          @default(0)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  type          String
+  parent_id     String?
+  latitude      Float
+  longitude     Float
+  zoomLevel     Int
+  propertyCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

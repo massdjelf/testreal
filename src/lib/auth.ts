@@ -10,6 +10,7 @@ declare module "next-auth" {
       email: string
       name?: string | null
       role: string
+      vendorStatus: string
       image?: string | null
     }
   }
@@ -18,6 +19,7 @@ declare module "next-auth" {
     email: string
     name?: string | null
     role: string
+    vendorStatus: string
   }
 }
 
@@ -27,7 +29,15 @@ declare module "next-auth/jwt" {
     email: string
     name?: string | null
     role: string
+    vendorStatus: string
   }
+}
+
+const authSecret = process.env.NEXTAUTH_SECRET
+const isProduction = process.env.NODE_ENV === "production"
+
+if (isProduction && !authSecret) {
+  console.warn("NEXTAUTH_SECRET is not set. Authentication may fail in production.")
 }
 
 export const authOptions: NextAuthOptions = {
@@ -65,6 +75,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role,
+          vendorStatus: user.vendorStatus,
         }
       },
     }),
@@ -76,6 +87,7 @@ export const authOptions: NextAuthOptions = {
         token.email = user.email
         token.name = user.name
         token.role = user.role
+        token.vendorStatus = user.vendorStatus
       }
       return token
     },
@@ -85,6 +97,7 @@ export const authOptions: NextAuthOptions = {
         session.user.email = token.email
         session.user.name = token.name
         session.user.role = token.role
+        session.user.vendorStatus = token.vendorStatus
       }
       return session
     },
@@ -95,5 +108,5 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  secret: process.env.NEXTAUTH_SECRET || "land-map-secret-key-2024",
+  secret: authSecret || (!isProduction ? "land-map-dev-secret-key" : undefined),
 }

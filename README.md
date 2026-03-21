@@ -27,7 +27,7 @@ This scaffold provides a robust foundation built with:
 - **🌐 Fetch** - Promise-based HTTP request
 
 ### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
+- **🗄️ Prisma + PostgreSQL** - Type-safe ORM with a production-ready relational database
 - **🔐 NextAuth.js** - Complete open-source authentication solution
 
 ### 🎨 Advanced UI Features
@@ -71,6 +71,25 @@ bun start
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to see your application running.
+
+## 🗄️ PostgreSQL Setup
+
+This project now targets **PostgreSQL** via Prisma. Before running the app locally:
+
+```bash
+cp .env.example .env
+# update DATABASE_URL and NEXTAUTH_SECRET in .env
+bun run db:generate
+bun run db:push
+```
+
+Example connection string:
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/landmap?schema=public"
+```
+
+If you are migrating from the old SQLite setup, export the data you want to keep before switching environments because `db/custom.db` is no longer the source of truth.
 
 ## 🤖 Powered by Z.ai
 

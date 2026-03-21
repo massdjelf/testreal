@@ -38,7 +38,8 @@ import { PropertyCard } from "@/components/property/PropertyCard"
 import { PropertyDetail } from "@/components/property/PropertyDetail"
 import { AdminPanel } from "@/components/admin/AdminPanel"
 import { VendorPanel } from "@/components/vendor/VendorPanel"
-import { Property } from "@/types"
+import { VendorApplicationDialog } from "@/components/vendor/VendorApplicationDialog"
+import { Property, User } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 
 // Dynamically import the map component with no SSR
@@ -84,6 +85,8 @@ export default function HomePage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [activeLayer, setActiveLayer] = useState<string | null>(null)
+  const [showVendorApplication, setShowVendorApplication] = useState(false)
+  const [viewerProfile, setViewerProfile] = useState<User | null>(null)
   const { toast } = useToast()
   
   // Use ref to prevent infinite loops
@@ -91,9 +94,32 @@ export default function HomePage() {
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Check if user is premium
-  const isPremium = session?.user?.role === "PREMIUM_USER" || 
-                    session?.user?.role === "PREMIUM_VENDOR" || 
+  const isPremium = session?.user?.role === "PREMIUM_USER" ||
+                    session?.user?.role === "PREMIUM_VENDOR" ||
                     session?.user?.role === "ADMIN"
+  const viewerVendorStatus = viewerProfile?.vendorStatus || session?.user?.vendorStatus || "NONE"
+  const canAccessVendorPanel =
+    session?.user?.role === "VENDOR" ||
+    session?.user?.role === "PREMIUM_VENDOR"
+  const canApplyForVendorAccess =
+    !!session &&
+    session.user.role === "USER" &&
+    viewerVendorStatus !== "APPROVED"
+
+  const requireAuthentication = useCallback((context: string) => {
+    if (session) {
+      return true
+    }
+
+    setShowAuthModal(true)
+    toast({
+      title: "Sign in required",
+      description: `Please sign in to ${context}.`,
+      variant: "destructive",
+    })
+
+    return false
+  }, [session, toast])
 
   // Fetch properties with proper cleanup and debouncing
   const fetchProperties = useCallback(async (bounds?: { north: number; south: number; east: number; west: number }, region?: string) => {
@@ -150,6 +176,49 @@ export default function HomePage() {
     }
   }, [currentView])
 
+  // Guard protected views for unauthenticated users
+  useEffect(() => {
+    if (status === "loading") {
+      return
+    }
+
+    if (!session && currentView !== "landing") {
+      setCurrentView("landing")
+      setSelectedPropertyId(null)
+      setSidebarOpen(false)
+    }
+  }, [currentView, session, status])
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setViewerProfile(null)
+      return
+    }
+
+    const controller = new AbortController()
+
+    const fetchViewerProfile = async () => {
+      try {
+        const response = await fetch(`/api/users?userId=${session.user.id}&includeCounts=false`, {
+          signal: controller.signal,
+        })
+
+        if (response.ok) {
+          const profile = await response.json()
+          setViewerProfile(profile)
+        }
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error("Failed to fetch viewer profile:", error)
+        }
+      }
+    }
+
+    void fetchViewerProfile()
+
+    return () => controller.abort()
+  }, [session?.user?.id])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -184,8 +253,12 @@ export default function HomePage() {
   }
 
   const handleSearch = (query: string) => {
+    if (!requireAuthentication("search properties on the map")) {
+      return
+    }
+
     const normalizedQuery = query.toLowerCase().trim()
-    
+
     // Find matching state
     for (const [state, data] of Object.entries(US_STATES)) {
       if (normalizedQuery.includes(state.toLowerCase()) || state.toLowerCase().includes(normalizedQuery)) {
@@ -204,12 +277,15 @@ export default function HomePage() {
   }
 
   const handleRegionSelect = (region: string) => {
+    if (!requireAuthentication("browse properties by region")) {
+      return
+    }
+
     const data = US_STATES[region]
     if (data) {
       setMapCenter({ lat: data.coords[0], lng: data.coords[1] })
       setMapZoom(data.zoom)
       setSelectedRegion(region)
-      // Allow access without login - users can browse but need login to interact
       setCurrentView("map")
       hasFetchedInitial.current = false
     }
@@ -219,6 +295,8 @@ export default function HomePage() {
     await signOut({ redirect: false })
     setCurrentView("landing")
     setViewedCount(0)
+    setViewerProfile(null)
+    setShowVendorApplication(false)
   }
 
   const handleBackToMap = () => {
@@ -430,7 +508,7 @@ export default function HomePage() {
                     <CardContent className="p-4 text-center">
                       <Map className="w-8 h-8 text-red-400 mx-auto mb-2" />
                       <div className="font-medium text-white">{state}</div>
-                      <div className="text-xs text-slate-400 mt-1">Click to explore</div>
+                      <div className="text-xs text-slate-400 mt-1">{session ? "Click to explore" : "Sign in to explore"}</div>
                     </CardContent>
                   </Card>
                 ))}
@@ -706,7 +784,7 @@ export default function HomePage() {
                         <Map className="w-4 h-4 mr-2" />
                         Map View
                       </Button>
-                      {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+                      {canAccessVendorPanel && (
                         <Button
                           variant="ghost"
                           className="w-full justify-start"
@@ -717,6 +795,19 @@ export default function HomePage() {
                         >
                           <Building2 className="w-4 h-4 mr-2" />
                           My Properties
+                        </Button>
+                      )}
+                      {canApplyForVendorAccess && (
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            setShowVendorApplication(true)
+                            setSidebarOpen(false)
+                          }}
+                        >
+                          <Building2 className="w-4 h-4 mr-2" />
+                          {viewerVendorStatus === "PENDING" ? "Vendor Review Pending" : "Sell Property"}
                         </Button>
                       )}
                       {session?.user?.role === "ADMIN" && (
@@ -816,7 +907,24 @@ export default function HomePage() {
                 </Badge>
               )}
 
-              {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+              {viewerVendorStatus === "PENDING" && (
+                <Badge variant="secondary" className="hidden sm:inline-flex">
+                  Restricted seller mode
+                </Badge>
+              )}
+
+              {canApplyForVendorAccess && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowVendorApplication(true)}
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  {viewerVendorStatus === "PENDING" ? "Pending Review" : "Sell Property"}
+                </Button>
+              )}
+
+              {canAccessVendorPanel && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1001,6 +1109,46 @@ export default function HomePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {session?.user?.id && (
+          <VendorApplicationDialog
+            open={showVendorApplication}
+            onOpenChange={setShowVendorApplication}
+            userId={session.user.id}
+            initialData={{
+              phone: viewerProfile?.phone,
+              vendorAddress: viewerProfile?.vendorAddress,
+              vendorIdNumber: viewerProfile?.vendorIdNumber,
+              vendorStatus: viewerVendorStatus as User["vendorStatus"],
+            }}
+            onSubmitted={(payload) => {
+              setViewerProfile((current) => {
+                const baseProfile = current ?? {
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.name || null,
+                  role: session.user.role as User["role"],
+                  vendorStatus: payload.vendorStatus,
+                  phone: payload.phone,
+                  avatar: null,
+                  subscriptionPlan: "FREE" as User["subscriptionPlan"],
+                  propertiesViewed: viewedCount,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                }
+
+                return {
+                  ...baseProfile,
+                  phone: payload.phone,
+                  vendorAddress: payload.vendorAddress,
+                  vendorIdNumber: payload.vendorIdNumber,
+                  vendorFeePaid: payload.vendorFeePaid,
+                  vendorStatus: payload.vendorStatus,
+                }
+              })
+            }}
+          />
+        )}
       </div>
     )
   }

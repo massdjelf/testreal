@@ -14,22 +14,26 @@ export async function GET(request: NextRequest) {
     const minArea = searchParams.get("minArea")
     const maxArea = searchParams.get("maxArea")
     const includeUnverified = searchParams.get("includeUnverified") === "true"
+    const pendingOnly = searchParams.get("pendingOnly") === "true"
+    const summary = searchParams.get("summary") === "true"
     const ownerId = searchParams.get("ownerId")
-    
-    // Map bounds for lazy loading
+    const limit = Number(searchParams.get("limit") || "100")
+
     const north = searchParams.get("north")
     const south = searchParams.get("south")
     const east = searchParams.get("east")
     const west = searchParams.get("west")
 
     const where: Record<string, unknown> = {}
-    
-    // Only filter by verification status if not explicitly including unverified
+
     if (!includeUnverified) {
       where.isVerified = true
     }
-    
-    // Filter by owner (for vendor panel)
+
+    if (pendingOnly) {
+      where.isVerified = false
+    }
+
     if (ownerId) {
       where.ownerId = ownerId
     }
@@ -57,7 +61,6 @@ export async function GET(request: NextRequest) {
       if (maxArea) (where.areaSqm as Record<string, number>).lte = parseFloat(maxArea)
     }
 
-    // Filter by map bounds (lazy loading)
     if (north && south && east && west) {
       where.latitude = {
         gte: parseFloat(south),
@@ -69,6 +72,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (summary) {
+      const [totalProperties, pendingProperties, aggregates] = await Promise.all([
+        db.property.count({
+          where: includeUnverified ? undefined : { isVerified: true },
+        }),
+        db.property.count({
+          where: { isVerified: false },
+        }),
+        db.property.aggregate({
+          where: includeUnverified ? undefined : { isVerified: true },
+          _sum: {
+            totalPrice: true,
+          },
+        }),
+      ])
+
+      return NextResponse.json({
+        totalProperties,
+        pendingProperties,
+        totalValue: aggregates._sum.totalPrice ?? 0,
+      })
+    }
+
     const properties = await db.property.findMany({
       where,
       include: {
@@ -77,6 +103,7 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             email: true,
+            phone: true,
           },
         },
         bids: {
@@ -88,6 +115,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: "desc",
       },
+      take: Number.isFinite(limit) ? Math.min(limit, 200) : 100,
     })
 
     return NextResponse.json(properties)
@@ -127,12 +155,35 @@ export async function POST(request: NextRequest) {
       minPartitionSize,
     } = body
 
-    // Calculate prices properly
+    const owner = await db.user.findUnique({
+      where: { id: ownerId },
+      select: {
+        role: true,
+        vendorStatus: true,
+      },
+    })
+
+    if (!owner) {
+      return NextResponse.json({ error: "Owner not found" }, { status: 404 })
+    }
+
+    const hasVendorWriteAccess =
+      owner.role === "ADMIN" ||
+      owner.role === "VENDOR" ||
+      owner.role === "PREMIUM_VENDOR"
+
+    if (!hasVendorWriteAccess || owner.vendorStatus === "PENDING") {
+      return NextResponse.json(
+        { error: "Vendor approval is required before publishing properties" },
+        { status: 403 }
+      )
+    }
+
     const parsedAreaSqm = parseFloat(areaSqm) || 1000
     const parsedPricePerSqm = parseFloat(pricePerSqm) || 0
     const totalPrice = parsedAreaSqm * parsedPricePerSqm
-    const areaSqf = parsedAreaSqm * 10.7639 // Convert m² to ft²
-    const pricePerSqf = parsedPricePerSqm / 10.7639 // Convert per m² to per ft²
+    const areaSqf = parsedAreaSqm * 10.7639
+    const pricePerSqf = parsedPricePerSqm / 10.7639
 
     const property = await db.property.create({
       data: {

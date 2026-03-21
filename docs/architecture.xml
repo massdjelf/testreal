@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<architecture name="LandMap" stack="Next.js App Router + Prisma + PostgreSQL + NextAuth">
+  <layers>
+    <layer name="Presentation">
+      <item path="src/app/page.tsx" role="Main client shell, view routing, map/list/detail orchestration" />
+      <item path="src/components/map/*" role="Leaflet-based map rendering, boundary and partition drawing" />
+      <item path="src/components/property/*" role="Property cards and details" />
+      <item path="src/components/admin/AdminPanel.tsx" role="Admin workflows" />
+      <item path="src/components/vendor/VendorPanel.tsx" role="Vendor workflows" />
+      <item path="src/components/ui/*" role="Reusable shadcn/ui design system" />
+    </layer>
+
+    <layer name="API">
+      <item path="src/app/api/properties/route.ts" role="Property listing/filtering and creation endpoints" />
+      <item path="src/app/api/properties/[id]/route.ts" role="Property detail endpoints" />
+      <item path="src/app/api/bids/route.ts" role="Bid placement and bid querying" />
+      <item path="src/app/api/bids/[id]/route.ts" role="Bid status management" />
+      <item path="src/app/api/users/register/route.ts" role="User registration" />
+      <item path="src/app/api/auth/[...nextauth]/route.ts" role="Auth.js session/token endpoints" />
+      <item path="src/app/api/documents/route.ts" role="Document uploads/metadata" />
+      <item path="src/app/api/seed/route.ts" role="Seed data generation" />
+    </layer>
+
+    <layer name="Domain and Data">
+      <item path="prisma/schema.prisma" role="Core entities: User, Property, Bid, Document, PropertyView" />
+      <item path="src/lib/db.ts" role="Singleton Prisma client" />
+      <item path="src/lib/auth.ts" role="NextAuth credentials auth and JWT/session shaping" />
+      <item path="src/types/index.ts" role="Frontend shared domain types" />
+      <item path=".env.example" role="PostgreSQL connection template for local environments" />
+    </layer>
+  </layers>
+
+  <runtimeFlows>
+    <flow name="Browse properties">
+      <step order="1">User interacts with map/search in src/app/page.tsx.</step>
+      <step order="2">Client calls /api/properties with bounds/filters.</step>
+      <step order="3">API route queries Prisma models and returns normalized JSON.</step>
+      <step order="4">UI updates markers/cards/details and optional premium overlays.</step>
+    </flow>
+
+    <flow name="Authentication">
+      <step order="1">User submits credentials via auth modal.</step>
+      <step order="2">NextAuth credentials provider validates password hash with bcrypt.</step>
+      <step order="3">JWT and session callbacks enrich token with id/email/role.</step>
+      <step order="4">Role-based views (admin/vendor/premium) unlock in client shell.</step>
+    </flow>
+
+    <flow name="Bidding">
+      <step order="1">User places bid from property details.</step>
+      <step order="2">/api/bids validates property status and partition constraints.</step>
+      <step order="3">Bid record is persisted and property status may transition to BIDDING.</step>
+    </flow>
+  </runtimeFlows>
+
+  <crossCuttingConcerns>
+    <concern name="State">Local UI state in page shell + hooks; auth state through SessionProvider.</concern>
+    <concern name="Validation">Basic request checks in API routes, Prisma constraints in schema.</concern>
+    <concern name="Styling">Tailwind v4 tokens and theme vars defined in globals.css.</concern>
+  </crossCuttingConcerns>
+</architecture>
