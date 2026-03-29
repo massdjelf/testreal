@@ -182,7 +182,7 @@ export function VendorPanel({ userId, onBack }: VendorPanelProps) {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch("/api/documents")
+      const response = await fetch(`/api/documents?userId=${userId}`)
       if (response.ok) {
         const docs = await response.json()
         setDocuments(docs)
@@ -201,6 +201,7 @@ export function VendorPanel({ userId, onBack }: VendorPanelProps) {
       const formData = new FormData()
       formData.append("file", file)
       formData.append("propertyId", selectedDocProperty)
+      formData.append("userId", userId)
       formData.append("type", "deed")
 
       const response = await fetch("/api/documents", {
@@ -216,13 +217,14 @@ export function VendorPanel({ userId, onBack }: VendorPanelProps) {
         fetchDocuments()
         setSelectedDocProperty(null)
       } else {
-        throw new Error("Upload failed")
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || "Upload failed")
       }
     } catch (error) {
       console.error(error)
       toast({
         title: "Error",
-        description: "Failed to upload document",
+        description: error instanceof Error ? error.message : "Failed to upload document",
         variant: "destructive",
       })
     } finally {
@@ -278,30 +280,26 @@ export function VendorPanel({ userId, onBack }: VendorPanelProps) {
 
     setUploadingImage(true)
     try {
-      // For demo purposes, we'll use placeholder image URLs that persist
-      // In production, you'd upload to cloud storage (AWS S3, Cloudinary, etc.)
-      const newImages: string[] = []
-      
-      // Use random placeholder images for demo
-      const placeholderImages = [
-        "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800",
-        "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
-        "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800",
-        "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800",
-        "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=800",
-        "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800",
-        "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=800",
-        "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=800",
-        "https://images.unsplash.com/photo-1518173946687-a4c036bc0dd4?w=800",
-        "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=800",
-      ]
-      
-      for (let i = 0; i < Math.min(files.length, 5 - uploadedImages.length); i++) {
-        // Pick a random placeholder image
-        const randomIndex = Math.floor(Math.random() * placeholderImages.length)
-        newImages.push(placeholderImages[randomIndex])
+      const uploadData = new FormData()
+      const availableSlots = Math.max(0, 5 - uploadedImages.length)
+      const filesToUpload = Array.from(files).slice(0, availableSlots)
+
+      filesToUpload.forEach((file) => {
+        uploadData.append("files", file)
+      })
+
+      const response = await fetch("/api/uploads", {
+        method: "POST",
+        body: uploadData,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to upload images")
       }
-      
+
+      const newImages: string[] = Array.isArray(data.urls) ? data.urls : []
       setUploadedImages(prev => [...prev, ...newImages].slice(0, 5))
       
       toast({

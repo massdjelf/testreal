@@ -66,8 +66,15 @@ export interface User {
   email: string
   name: string | null
   role: "USER" | "VENDOR" | "ADMIN" | "PREMIUM_USER" | "PREMIUM_VENDOR"
+  vendorStatus: "NONE" | "PENDING" | "APPROVED" | "REJECTED"
   phone: string | null
   avatar: string | null
+  vendorAddress?: string | null
+  vendorIdNumber?: string | null
+  vendorFeePaid?: boolean
+  vendorRequestedAt?: Date | null
+  vendorReviewedAt?: Date | null
+  vendorReviewedBy?: string | null
   subscriptionPlan: "FREE" | "PREMIUM" | "ENTERPRISE"
   propertiesViewed: number
   createdAt: Date

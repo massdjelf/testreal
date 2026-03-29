@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import dynamic from "next/dynamic"
 import { useSession, signOut } from "next-auth/react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   Dialog,
@@ -31,6 +31,9 @@ import {
   Sparkles,
   X,
   MessageCircle,
+  Sun,
+  Moon,
+  Languages,
 } from "lucide-react"
 import { AuthModal } from "@/components/auth/AuthModal"
 import { FilterPanel } from "@/components/layout/FilterPanel"
@@ -38,7 +41,8 @@ import { PropertyCard } from "@/components/property/PropertyCard"
 import { PropertyDetail } from "@/components/property/PropertyDetail"
 import { AdminPanel } from "@/components/admin/AdminPanel"
 import { VendorPanel } from "@/components/vendor/VendorPanel"
-import { Property } from "@/types"
+import { VendorApplicationDialog } from "@/components/vendor/VendorApplicationDialog"
+import { Property, User } from "@/types"
 import { useToast } from "@/hooks/use-toast"
 
 // Dynamically import the map component with no SSR
@@ -51,6 +55,65 @@ const PropertyMap = dynamic(
 )
 
 type ViewType = "landing" | "map" | "property" | "admin" | "vendor"
+type Locale = "en" | "fr" | "es" | "ar" | "zh"
+
+const I18N: Record<Locale, Record<string, string>> = {
+  en: {
+    signIn: "Sign In",
+    getStarted: "Get Started",
+    exploreMap: "Explore Map",
+    browseByRegion: "Browse by Region",
+    mapView: "Map View",
+    sellProperty: "Sell Property",
+    pendingReview: "Pending Review",
+    restrictedSellerMode: "Restricted seller mode",
+    layers: "Layers",
+  },
+  fr: {
+    signIn: "Se connecter",
+    getStarted: "Commencer",
+    exploreMap: "Explorer la carte",
+    browseByRegion: "Parcourir par région",
+    mapView: "Vue carte",
+    sellProperty: "Vendre un bien",
+    pendingReview: "En attente",
+    restrictedSellerMode: "Mode vendeur restreint",
+    layers: "Couches",
+  },
+  es: {
+    signIn: "Iniciar sesión",
+    getStarted: "Comenzar",
+    exploreMap: "Explorar mapa",
+    browseByRegion: "Explorar por región",
+    mapView: "Vista de mapa",
+    sellProperty: "Vender propiedad",
+    pendingReview: "Pendiente",
+    restrictedSellerMode: "Modo vendedor restringido",
+    layers: "Capas",
+  },
+  ar: {
+    signIn: "تسجيل الدخول",
+    getStarted: "ابدأ",
+    exploreMap: "استكشف الخريطة",
+    browseByRegion: "تصفح حسب المنطقة",
+    mapView: "عرض الخريطة",
+    sellProperty: "بيع عقار",
+    pendingReview: "قيد المراجعة",
+    restrictedSellerMode: "وضع بائع مقيد",
+    layers: "الطبقات",
+  },
+  zh: {
+    signIn: "登录",
+    getStarted: "开始使用",
+    exploreMap: "浏览地图",
+    browseByRegion: "按地区浏览",
+    mapView: "地图视图",
+    sellProperty: "发布房源",
+    pendingReview: "待审核",
+    restrictedSellerMode: "卖家受限模式",
+    layers: "图层",
+  },
+}
 
 // US States with coordinates for SEO and navigation
 const US_STATES: Record<string, { coords: [number, number]; zoom: number }> = {
@@ -70,6 +133,7 @@ const FREE_USER_PROPERTY_LIMIT = 10
 
 export default function HomePage() {
   const { data: session, status } = useSession()
+  const { theme, setTheme } = useTheme()
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
@@ -84,6 +148,9 @@ export default function HomePage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   const [showLayerPanel, setShowLayerPanel] = useState(false)
   const [activeLayer, setActiveLayer] = useState<string | null>(null)
+  const [locale, setLocale] = useState<Locale>("en")
+  const [showVendorApplication, setShowVendorApplication] = useState(false)
+  const [viewerProfile, setViewerProfile] = useState<User | null>(null)
   const { toast } = useToast()
   
   // Use ref to prevent infinite loops
@@ -91,9 +158,33 @@ export default function HomePage() {
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Check if user is premium
-  const isPremium = session?.user?.role === "PREMIUM_USER" || 
-                    session?.user?.role === "PREMIUM_VENDOR" || 
+  const isPremium = session?.user?.role === "PREMIUM_USER" ||
+                    session?.user?.role === "PREMIUM_VENDOR" ||
                     session?.user?.role === "ADMIN"
+  const viewerVendorStatus = viewerProfile?.vendorStatus || session?.user?.vendorStatus || "NONE"
+  const canAccessVendorPanel =
+    session?.user?.role === "VENDOR" ||
+    session?.user?.role === "PREMIUM_VENDOR"
+  const canApplyForVendorAccess =
+    !!session &&
+    session.user.role === "USER" &&
+    viewerVendorStatus !== "APPROVED"
+  const t = (key: keyof (typeof I18N)["en"]) => I18N[locale][key] || I18N.en[key]
+
+  const requireAuthentication = useCallback((context: string) => {
+    if (session) {
+      return true
+    }
+
+    setShowAuthModal(true)
+    toast({
+      title: "Sign in required",
+      description: `Please sign in to ${context}.`,
+      variant: "destructive",
+    })
+
+    return false
+  }, [session, toast])
 
   // Fetch properties with proper cleanup and debouncing
   const fetchProperties = useCallback(async (bounds?: { north: number; south: number; east: number; west: number }, region?: string) => {
@@ -150,6 +241,49 @@ export default function HomePage() {
     }
   }, [currentView])
 
+  // Guard protected views for unauthenticated users
+  useEffect(() => {
+    if (status === "loading") {
+      return
+    }
+
+    if (!session && currentView !== "landing") {
+      setCurrentView("landing")
+      setSelectedPropertyId(null)
+      setSidebarOpen(false)
+    }
+  }, [currentView, session, status])
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setViewerProfile(null)
+      return
+    }
+
+    const controller = new AbortController()
+
+    const fetchViewerProfile = async () => {
+      try {
+        const response = await fetch(`/api/users?userId=${session.user.id}&includeCounts=false`, {
+          signal: controller.signal,
+        })
+
+        if (response.ok) {
+          const profile = await response.json()
+          setViewerProfile(profile)
+        }
+      } catch (error) {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          console.error("Failed to fetch viewer profile:", error)
+        }
+      }
+    }
+
+    void fetchViewerProfile()
+
+    return () => controller.abort()
+  }, [session?.user?.id])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -184,8 +318,12 @@ export default function HomePage() {
   }
 
   const handleSearch = (query: string) => {
+    if (!requireAuthentication("search properties on the map")) {
+      return
+    }
+
     const normalizedQuery = query.toLowerCase().trim()
-    
+
     // Find matching state
     for (const [state, data] of Object.entries(US_STATES)) {
       if (normalizedQuery.includes(state.toLowerCase()) || state.toLowerCase().includes(normalizedQuery)) {
@@ -204,12 +342,15 @@ export default function HomePage() {
   }
 
   const handleRegionSelect = (region: string) => {
+    if (!requireAuthentication("browse properties by region")) {
+      return
+    }
+
     const data = US_STATES[region]
     if (data) {
       setMapCenter({ lat: data.coords[0], lng: data.coords[1] })
       setMapZoom(data.zoom)
       setSelectedRegion(region)
-      // Allow access without login - users can browse but need login to interact
       setCurrentView("map")
       hasFetchedInitial.current = false
     }
@@ -219,11 +360,15 @@ export default function HomePage() {
     await signOut({ redirect: false })
     setCurrentView("landing")
     setViewedCount(0)
+    setViewerProfile(null)
+    setShowVendorApplication(false)
   }
 
   const handleBackToMap = () => {
     setCurrentView("map")
     setSelectedPropertyId(null)
+    hasFetchedInitial.current = false
+    fetchProperties()
   }
 
   // Landing Page
@@ -313,6 +458,29 @@ export default function HomePage() {
                   </Button>
                 </>
               )}
+              <div className="hidden md:flex items-center gap-2">
+                <Languages className="w-4 h-4 text-slate-400" />
+                <select
+                  value={locale}
+                  onChange={(event) => setLocale(event.target.value as Locale)}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1"
+                  aria-label="Language"
+                >
+                  <option value="en">EN</option>
+                  <option value="fr">FR</option>
+                  <option value="es">ES</option>
+                  <option value="ar">AR</option>
+                  <option value="zh">中文</option>
+                </select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-slate-300 hover:text-white"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                >
+                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </Button>
+              </div>
             </div>
           </div>
         </header>
@@ -430,7 +598,7 @@ export default function HomePage() {
                     <CardContent className="p-4 text-center">
                       <Map className="w-8 h-8 text-red-400 mx-auto mb-2" />
                       <div className="font-medium text-white">{state}</div>
-                      <div className="text-xs text-slate-400 mt-1">Click to explore</div>
+                      <div className="text-xs text-slate-400 mt-1">{session ? "Click to explore" : "Sign in to explore"}</div>
                     </CardContent>
                   </Card>
                 ))}
@@ -706,7 +874,7 @@ export default function HomePage() {
                         <Map className="w-4 h-4 mr-2" />
                         Map View
                       </Button>
-                      {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+                      {canAccessVendorPanel && (
                         <Button
                           variant="ghost"
                           className="w-full justify-start"
@@ -717,6 +885,19 @@ export default function HomePage() {
                         >
                           <Building2 className="w-4 h-4 mr-2" />
                           My Properties
+                        </Button>
+                      )}
+                      {canApplyForVendorAccess && (
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            setShowVendorApplication(true)
+                            setSidebarOpen(false)
+                          }}
+                        >
+                          <Building2 className="w-4 h-4 mr-2" />
+                          {viewerVendorStatus === "PENDING" ? t("pendingReview") : t("sellProperty")}
                         </Button>
                       )}
                       {session?.user?.role === "ADMIN" && (
@@ -797,6 +978,28 @@ export default function HomePage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <div className="hidden md:flex items-center gap-2 mr-1">
+                <select
+                  value={locale}
+                  onChange={(event) => setLocale(event.target.value as Locale)}
+                  className="bg-background border text-xs rounded px-2 py-1"
+                  aria-label="Language"
+                >
+                  <option value="en">EN</option>
+                  <option value="fr">FR</option>
+                  <option value="es">ES</option>
+                  <option value="ar">AR</option>
+                  <option value="zh">中文</option>
+                </select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                >
+                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </Button>
+              </div>
+
               {/* Layer Toggle Button */}
               <Button
                 variant="outline"
@@ -805,7 +1008,7 @@ export default function HomePage() {
                 onClick={() => isPremium ? setShowLayerPanel(!showLayerPanel) : setShowPremiumModal(true)}
               >
                 <Layers className="w-4 h-4" />
-                <span className="hidden sm:inline">Layers</span>
+                <span className="hidden sm:inline">{t("layers")}</span>
                 {!isPremium && <Lock className="w-3 h-3" />}
               </Button>
 
@@ -816,7 +1019,24 @@ export default function HomePage() {
                 </Badge>
               )}
 
-              {(session?.user?.role === "VENDOR" || session?.user?.role === "PREMIUM_VENDOR") && (
+              {viewerVendorStatus === "PENDING" && (
+                <Badge variant="secondary" className="hidden sm:inline-flex">
+                  Restricted seller mode
+                </Badge>
+              )}
+
+              {canApplyForVendorAccess && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowVendorApplication(true)}
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  {viewerVendorStatus === "PENDING" ? t("pendingReview") : t("sellProperty")}
+                </Button>
+              )}
+
+              {canAccessVendorPanel && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -862,7 +1082,7 @@ export default function HomePage() {
               />
             </div>
 
-            <ScrollArea className="flex-1 p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               <div className="space-y-4">
                 {loading ? (
                   <div className="space-y-4">
@@ -896,7 +1116,7 @@ export default function HomePage() {
                   ))
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           {/* Right Panel - Map */}
@@ -921,7 +1141,7 @@ export default function HomePage() {
                     Map Layers
                   </div>
                   <div className="space-y-2">
-                    {['Satellite', 'Land Types', 'Topographic'].map((layer) => (
+                    {['Satellite', 'Land Types', 'Topographic', 'Crime Heatmap', 'Flood Risk', 'Soil Productivity'].map((layer) => (
                       <label key={layer} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"
@@ -1001,6 +1221,46 @@ export default function HomePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {session?.user?.id && (
+          <VendorApplicationDialog
+            open={showVendorApplication}
+            onOpenChange={setShowVendorApplication}
+            userId={session.user.id}
+            initialData={{
+              phone: viewerProfile?.phone,
+              vendorAddress: viewerProfile?.vendorAddress,
+              vendorIdNumber: viewerProfile?.vendorIdNumber,
+              vendorStatus: viewerVendorStatus as User["vendorStatus"],
+            }}
+            onSubmitted={(payload) => {
+              setViewerProfile((current) => {
+                const baseProfile = current ?? {
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: session.user.name || null,
+                  role: session.user.role as User["role"],
+                  vendorStatus: payload.vendorStatus,
+                  phone: payload.phone,
+                  avatar: null,
+                  subscriptionPlan: "FREE" as User["subscriptionPlan"],
+                  propertiesViewed: viewedCount,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                }
+
+                return {
+                  ...baseProfile,
+                  phone: payload.phone,
+                  vendorAddress: payload.vendorAddress,
+                  vendorIdNumber: payload.vendorIdNumber,
+                  vendorFeePaid: payload.vendorFeePaid,
+                  vendorStatus: payload.vendorStatus,
+                }
+              })
+            }}
+          />
+        )}
       </div>
     )
   }

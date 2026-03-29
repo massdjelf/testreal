@@ -1,6 +1,33 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 
+async function uploadToCloudinary(file: File) {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET
+
+  if (!cloudName || !uploadPreset) {
+    throw new Error("Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET.")
+  }
+
+  const payload = new FormData()
+  payload.append("file", file)
+  payload.append("upload_preset", uploadPreset)
+  payload.append("folder", "landmap/documents")
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
+    method: "POST",
+    body: payload,
+  })
+
+  if (!response.ok) {
+    const cloudinaryError = await response.text()
+    throw new Error(`Cloudinary upload failed: ${cloudinaryError}`)
+  }
+
+  const data = await response.json()
+  return data.secure_url as string
+}
+
 // GET documents for vendor
 export async function GET(request: NextRequest) {
   try {
@@ -14,23 +41,22 @@ export async function GET(request: NextRequest) {
       where.propertyId = propertyId
     }
 
-    // If userId provided, filter to user's properties
     if (userId) {
       const userProperties = await db.property.findMany({
         where: { ownerId: userId },
-        select: { id: true }
+        select: { id: true },
       })
-      where.propertyId = { in: userProperties.map(p => p.id) }
+      where.propertyId = { in: userProperties.map((p) => p.id) }
     }
 
     const documents = await db.document.findMany({
       where,
       include: {
         property: {
-          select: { title: true }
-        }
+          select: { title: true },
+        },
       },
-      orderBy: { uploadedAt: "desc" }
+      orderBy: { uploadedAt: "desc" },
     })
 
     return NextResponse.json(documents)
@@ -49,19 +75,48 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File | null
     const propertyId = formData.get("propertyId") as string
-    const type = formData.get("type") as string || "other"
+    const userId = formData.get("userId") as string
+    const type = (formData.get("type") as string) || "other"
 
-    if (!file || !propertyId) {
+    if (!file || !propertyId || !userId) {
       return NextResponse.json(
-        { error: "File and propertyId are required" },
+        { error: "File, propertyId, and userId are required" },
         { status: 400 }
       )
     }
 
-    // In a real app, you would upload to cloud storage (S3, Cloudflare R2, etc.)
-    // For demo, we'll just create a record with a placeholder URL
-    const fileName = `${Date.now()}-${file.name}`
-    const fileUrl = `/uploads/${fileName}`
+    const property = await db.property.findUnique({
+      where: { id: propertyId },
+      select: {
+        id: true,
+        ownerId: true,
+      },
+    })
+
+    if (!property) {
+      return NextResponse.json(
+        { error: "Property not found" },
+        { status: 404 }
+      )
+    }
+
+    if (property.ownerId !== userId) {
+      return NextResponse.json(
+        { error: "You can only upload documents for your own properties" },
+        { status: 403 }
+      )
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    const fileUrl = await uploadToCloudinary(file)
 
     const document = await db.document.create({
       data: {
@@ -69,7 +124,7 @@ export async function POST(request: NextRequest) {
         name: file.name,
         url: fileUrl,
         type,
-        userId: "system", // Would be actual user ID from session
+        userId,
         status: "PENDING",
       },
     })
@@ -78,7 +133,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error uploading document:", error)
     return NextResponse.json(
-      { error: "Failed to upload document" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to upload document",
+      },
       { status: 500 }
     )
   }

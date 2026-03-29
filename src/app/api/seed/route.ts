@@ -1,9 +1,19 @@
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import bcrypt from "bcryptjs"
 
 export async function GET() {
   try {
+    const isDevLikeEnvironment = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test"
+
+    if (!isDevLikeEnvironment) {
+      return NextResponse.json(
+        { error: "Seed endpoint is only available in development/test environments" },
+        { status: 403 }
+      )
+    }
+
     // Check if already seeded
     const existingUsers = await db.user.count()
     if (existingUsers > 0) {
@@ -18,6 +28,7 @@ export async function GET() {
         password: hashedPassword,
         name: "Admin User",
         role: "ADMIN",
+        vendorStatus: "APPROVED",
       },
     })
 
@@ -29,6 +40,7 @@ export async function GET() {
         password: vendorPassword,
         name: "Property Vendor",
         role: "VENDOR",
+        vendorStatus: "APPROVED",
       },
     })
 
@@ -40,11 +52,12 @@ export async function GET() {
         password: userPassword,
         name: "Regular User",
         role: "USER",
+        vendorStatus: "NONE",
       },
     })
 
     // Create sample properties
-    const properties = [
+    const properties: Prisma.PropertyUncheckedCreateInput[] = [
       {
         title: "Mountain View Ranch",
         description: "Beautiful ranch land with stunning mountain views. Perfect for building your dream home or starting a small farm.",

@@ -155,6 +155,24 @@ const TILE_LAYERS: Record<string, { url: string; name: string; description: stri
     description: "Terrain with contour lines",
     attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
   },
+  "Crime Heatmap": {
+    url: "https://stamen-tiles.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png",
+    name: "Crime Heatmap",
+    description: "High-contrast streets for incident overlays (heatmap-ready baseline).",
+    attribution: '&copy; <a href="https://stamen.com/">Stamen</a> & OpenStreetMap contributors',
+  },
+  "Flood Risk": {
+    url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+    name: "Flood Risk",
+    description: "Humanitarian-style base map for flood exposure analysis.",
+    attribution: '&copy; OpenStreetMap contributors, HOT',
+  },
+  "Soil Productivity": {
+    url: "https://tiles.wmflabs.org/hikebike/{z}/{x}/{y}.png",
+    name: "Soil Productivity",
+    description: "Terrain/landform oriented view to compare agricultural potential.",
+    attribution: '&copy; OpenStreetMap contributors',
+  },
 }
 
 export function PropertyMap({ 
@@ -200,7 +218,7 @@ export function PropertyMap({
           const boundary = generateBoundary(property)
           return (
             <Polygon
-              key={`boundary-${property.id}`}
+              key={`boundary-${property.id}-${property.status}-${property.isVerified ? "v" : "u"}`}
               positions={boundary}
               pathOptions={{
                 color: statusColors[property.status],
@@ -216,7 +234,7 @@ export function PropertyMap({
         {/* Property Markers */}
         {properties.map((property) => (
           <Marker
-            key={property.id}
+            key={`${property.id}-${property.status}-${property.isVerified ? "v" : "u"}`}
             position={[property.latitude, property.longitude]}
             icon={statusIcons[property.status] || statusIcons.AVAILABLE}
           >
@@ -326,35 +344,32 @@ export function PropertyMap({
           </div>
           
           {/* Land Types Legend */}
-          {activeLayer === "Land Types" && (
+          {(activeLayer === "Land Types" || activeLayer === "Crime Heatmap" || activeLayer === "Flood Risk" || activeLayer === "Soil Productivity") && (
             <div className="mt-2 pt-2 border-t space-y-1">
               <div className="text-xs font-medium mb-1">Map Legend</div>
-              <div className="grid grid-cols-2 gap-1 text-[10px]">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-green-200"></div>
-                  <span>Forest/Park</span>
+              {activeLayer === "Land Types" && (
+                <div className="grid grid-cols-2 gap-1 text-[10px]">
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-200"></div><span>Forest/Park</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-yellow-200"></div><span>Farmland</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-gray-300"></div><span>Residential</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-gray-500"></div><span>Commercial</span></div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-yellow-200"></div>
-                  <span>Farmland</span>
+              )}
+              {activeLayer === "Crime Heatmap" && (
+                <div className="text-[10px] text-muted-foreground">
+                  Dark corridors are ideal for incident-density overlays. Use this as a crime analysis base.
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-gray-300"></div>
-                  <span>Residential</span>
+              )}
+              {activeLayer === "Flood Risk" && (
+                <div className="text-[10px] text-muted-foreground">
+                  Use this layer with flood-zone data to prioritize resilient listings.
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-gray-500"></div>
-                  <span>Commercial</span>
+              )}
+              {activeLayer === "Soil Productivity" && (
+                <div className="text-[10px] text-muted-foreground">
+                  Terrain-focused view for agricultural and land development decisions.
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-purple-200"></div>
-                  <span>Industrial</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-blue-200"></div>
-                  <span>Water</span>
-                </div>
-              </div>
+              )}
               <div className="text-[9px] text-muted-foreground mt-1">
                 Source: OpenStreetMap contributors
               </div>

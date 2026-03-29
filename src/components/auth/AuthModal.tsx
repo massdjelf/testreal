@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 
 interface AuthModalProps {
@@ -26,15 +27,12 @@ export function AuthModal({ open, onOpenChange, onSuccess }: AuthModalProps) {
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
-  // Login form state
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
 
-  // Register form state
   const [registerName, setRegisterName] = useState("")
   const [registerEmail, setRegisterEmail] = useState("")
   const [registerPassword, setRegisterPassword] = useState("")
-  const [registerRole, setRegisterRole] = useState<"USER" | "VENDOR">("USER")
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,7 +83,6 @@ export function AuthModal({ open, onOpenChange, onSuccess }: AuthModalProps) {
           email: registerEmail,
           password: registerPassword,
           name: registerName,
-          role: registerRole,
         }),
       })
 
@@ -95,7 +92,6 @@ export function AuthModal({ open, onOpenChange, onSuccess }: AuthModalProps) {
         throw new Error(data.error || "Registration failed")
       }
 
-      // Auto login after registration
       const result = await signIn("credentials", {
         email: registerEmail,
         password: registerPassword,
@@ -111,7 +107,7 @@ export function AuthModal({ open, onOpenChange, onSuccess }: AuthModalProps) {
       } else {
         toast({
           title: "Account Created!",
-          description: "Welcome to LandMap!",
+          description: "You are registered as a buyer. Apply from the map to become a vendor.",
         })
         onSuccess()
         onOpenChange(false)
@@ -210,33 +206,18 @@ export function AuthModal({ open, onOpenChange, onSuccess }: AuthModalProps) {
                   minLength={6}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>I want to:</Label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="role"
-                      value="USER"
-                      checked={registerRole === "USER"}
-                      onChange={() => setRegisterRole("USER")}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm">Buy Property</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="role"
-                      value="VENDOR"
-                      checked={registerRole === "VENDOR"}
-                      onChange={() => setRegisterRole("VENDOR")}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm">Sell Property</span>
-                  </label>
+
+              <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">Vendor flow</Badge>
+                  <span className="text-sm font-medium">Everyone starts as USER</span>
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  After signup, click <span className="font-medium text-foreground">Sell Property</span>, submit your ID,
+                  address, phone number, and processing fee confirmation. An admin must approve the request before any property can be published.
+                </p>
               </div>
+
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Creating Account..." : "Create Account"}
               </Button>
